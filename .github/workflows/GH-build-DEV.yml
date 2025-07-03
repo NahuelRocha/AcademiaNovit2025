@@ -1,0 +1,50 @@
+name: Build and Test DEV
+
+on:
+  push:
+    branches: [ development ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-22.04  # LTS más actual
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4.1.1  # Versión estable actual
+      
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4.0.0  # Versión estable actual
+      with:
+        dotnet-version: '8.0.x'  # .NET 8 LTS (soporte hasta nov 2026)
+        
+    - name: Restore dependencies
+      run: dotnet restore
+      
+    - name: Build project
+      run: dotnet build --no-restore --configuration Release
+      
+    - name: Run unit tests
+      run: dotnet test --no-build --configuration Release --verbosity normal
+      
+    - name: Send email notification
+      if: always()
+      uses: dawidd6/action-send-mail@v3.12.0  # Versión estable actual
+      with:
+        server_address: ${{ secrets.DEBUGMAIL_HOST }}
+        server_port: ${{ secrets.DEBUGMAIL_PORT }}
+        username: ${{ secrets.DEBUGMAIL_USER }}
+        password: ${{ secrets.DEBUGMAIL_PASS }}
+        subject: "Pipeline ${{ job.status }} - ${{ github.repository }}"
+        body: |
+          El pipeline de CI/CD ha finalizado.
+          
+          Repositorio: ${{ github.repository }}
+          Rama: ${{ github.ref }}
+          Commit: ${{ github.sha }}
+          Estado: ${{ job.status }}
+          
+          Ver detalles: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        to: ${{ secrets.EMAIL_TO }}
+        from: ${{ secrets.DEBUGMAIL_USER }}
