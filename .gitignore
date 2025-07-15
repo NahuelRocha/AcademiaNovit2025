@@ -398,3 +398,14 @@ FodyWeavers.xsd
 
 # JetBrains Rider
 *.sln.iml
+
+
+# Docker
+.env
+.env.local
+.env.production
+docker-compose.override.yml
+
+# Logs
+Logs/
+*.log
