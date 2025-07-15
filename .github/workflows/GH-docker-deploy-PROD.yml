@@ -1,0 +1,157 @@
+name: Docker Deploy PROD
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  DEPLOY_TAG: production
+
+jobs:
+  deploy:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Deploy to production via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VM_HOST }}
+          port: ${{ secrets.VM_PORT }}
+          username: ${{ secrets.VM_USER }}
+          key: ${{ secrets.VM_PRIVATE_KEY }}
+          script: |
+            set -e
+
+            export REGISTRY=${{ env.REGISTRY }}
+            export IMAGE_NAME=${{ env.IMAGE_NAME }}
+            export DEPLOY_TAG=${{ env.DEPLOY_TAG }}
+
+            echo "🌀 Iniciando despliegue Swarm en producción..."
+
+            # Login a GHCR con PAT
+            echo "${{ secrets.GHCR_PAT }}" | docker login $REGISTRY -u ${{ secrets.GHCR_USER }} --password-stdin
+
+            # Crear carpeta de despliegue si no existe
+            mkdir -p ~/academianovit-prod
+            cd ~/academianovit-prod
+
+            # Guardar docker-swarm.yml en la VM
+            cat > docker-swarm.yml <<EOF
+            version: '3.8'
+
+            services:
+              postgres:
+                image: postgres:16.6-alpine
+                environment:
+                  POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
+                  POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+                  POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+                  POSTGRES_INITDB_ARGS: "--encoding=UTF-8"
+                volumes:
+                  - postgres_data:/var/lib/postgresql/data
+                networks:
+                  - app_network
+                deploy:
+                  replicas: 1
+                  placement:
+                    constraints: [node.role == manager]
+                  restart_policy:
+                    condition: on-failure
+                  resources:
+                    limits:
+                      memory: 512M
+                healthcheck:
+                  test: ["CMD-SHELL", "pg_isready -U ${{ secrets.POSTGRES_USER }} -d ${{ secrets.POSTGRES_DB }}"]
+                  interval: 10s
+                  timeout: 5s
+                  retries: 5
+
+              api:
+                image: $REGISTRY/$IMAGE_NAME:$DEPLOY_TAG
+                environment:
+                  - ASPNETCORE_ENVIRONMENT=Production
+                  - ASPNETCORE_URLS=http://+:8080
+                  - ConnectionStrings__DefaultConnection=Host=postgres;Port=5432;Database=${{ secrets.POSTGRES_DB }};Username=${{ secrets.POSTGRES_USER }};Password=${{ secrets.POSTGRES_PASSWORD }}
+                networks:
+                  - app_network
+                deploy:
+                  replicas: 5
+                  update_config:
+                    parallelism: 2
+                    delay: 10s
+                    order: start-first
+                  restart_policy:
+                    condition: on-failure
+                  resources:
+                    limits:
+                      memory: 256M
+                healthcheck:
+                  test: ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"]
+                  interval: 30s
+                  timeout: 10s
+                  retries: 3
+
+              nginx:
+                image: nginx:1.25.5-alpine
+                ports:
+                  - "80:80"
+                  - "8080:8080"
+                networks:
+                  - app_network
+                configs:
+                  - source: nginx_config
+                    target: /etc/nginx/nginx.conf
+                deploy:
+                  replicas: 1
+                  placement:
+                    constraints: [node.role == manager]
+                  restart_policy:
+                    condition: on-failure
+                depends_on:
+                  - api
+
+            volumes:
+              postgres_data:
+
+            networks:
+              app_network:
+                driver: overlay
+                attachable: true
+
+            configs:
+              nginx_config:
+                external: true
+            EOF
+
+            # Pull de imagenes (precalentamiento)
+            docker pull $REGISTRY/$IMAGE_NAME:$DEPLOY_TAG
+
+            # Deploy del stack
+            docker stack deploy -c docker-swarm.yml academianovit
+
+            echo "✅ Despliegue completado."
+
+      - name: Send notification
+        if: always()
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ secrets.DEBUGMAIL_HOST }}
+          server_port: ${{ secrets.DEBUGMAIL_PORT }}
+          username: ${{ secrets.DEBUGMAIL_USER }}
+          password: ${{ secrets.DEBUGMAIL_PASS }}
+          subject: "🚀 Deploy a Producción ${{ job.status }}"
+          body: |
+            Se ha realizado el deploy a producción.
+
+            Imagen: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.DEPLOY_TAG }}
+            Resultado: ${{ job.status }}
+            Ver logs: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          to: ${{ secrets.EMAIL_TO }}
+          from: ${{ secrets.DEBUGMAIL_USER }}
