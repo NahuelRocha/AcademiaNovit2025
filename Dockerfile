@@ -1,4 +1,4 @@
-FROM mcr.microsoft.com/dotnet/sdk:9.0.1 AS build
+FROM mcr.microsoft.com/dotnet/sdk:9.0.301 AS build
 WORKDIR /app
 
 # Copiar archivo del proyecto desde la subcarpeta
@@ -14,7 +14,7 @@ WORKDIR /app/AcademiaNovit
 # Compilar la aplicación
 RUN dotnet publish -c Release -o /app/publish
 
-FROM mcr.microsoft.com/dotnet/aspnet:9.0.1 AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:9.0.3 AS runtime
 WORKDIR /app
 
 # Copiar la aplicación compilada
