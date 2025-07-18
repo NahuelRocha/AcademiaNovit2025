@@ -2,9 +2,6 @@ name: Docker Deploy DEV
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
 
 env:
   REGISTRY: ghcr.io
