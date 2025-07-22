@@ -19,6 +19,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # Debug: Verificar archivos locales
+      - name: Debug - List local files
+        run: |
+          echo "📁 Archivos en el directorio actual:"
+          ls -la
+          echo "🔍 Verificando archivos específicos:"
+          ls -la nginx.conf docker-swarm.yml || echo "❌ Algunos archivos no encontrados localmente"
+
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v2
         with:
@@ -26,11 +34,24 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Copy files to server
+      # Crear directorio remoto primero
+      - name: Create remote directory
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VM_HOST }}
+          port: ${{ secrets.VM_PORT }}
+          username: ${{ secrets.VM_USER }}
+          key: ${{ secrets.VM_PRIVATE_KEY }}
+          script: |
+            echo "📁 Creando directorio..."
+            mkdir -p ~/academianovit-prod
+            echo "✅ Directorio creado/verificado"
+
+      - name: Copy nginx.conf to server
         uses: garygrossgarten/github-action-scp@release
         with:
           local: nginx.conf
-          remote: ~/academianovit-prod/nginx.conf
+          remote: academianovit-prod/nginx.conf
           host: ${{ secrets.VM_HOST }}
           username: ${{ secrets.VM_USER }}
           privateKey: ${{ secrets.VM_PRIVATE_KEY }}
@@ -40,11 +61,33 @@ jobs:
         uses: garygrossgarten/github-action-scp@release
         with:
           local: docker-swarm.yml
-          remote: ~/academianovit-prod/docker-swarm.yml
+          remote: academianovit-prod/docker-swarm.yml
           host: ${{ secrets.VM_HOST }}
           username: ${{ secrets.VM_USER }}
           privateKey: ${{ secrets.VM_PRIVATE_KEY }}
           port: ${{ secrets.VM_PORT }}
+
+      # Debug: Verificar archivos copiados
+      - name: Debug - Verify copied files
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VM_HOST }}
+          port: ${{ secrets.VM_PORT }}
+          username: ${{ secrets.VM_USER }}
+          key: ${{ secrets.VM_PRIVATE_KEY }}
+          script: |
+            echo "🔍 Debug - Verificando archivos copiados:"
+            echo "Directorio home:"
+            ls -la ~
+            echo ""
+            echo "Directorio academianovit-prod:"
+            ls -la ~/academianovit-prod/
+            echo ""
+            echo "Contenido de nginx.conf (primeras 5 líneas):"
+            head -n 5 ~/academianovit-prod/nginx.conf || echo "❌ nginx.conf no encontrado"
+            echo ""
+            echo "Contenido de docker-swarm.yml (primeras 5 líneas):"
+            head -n 5 ~/academianovit-prod/docker-swarm.yml || echo "❌ docker-swarm.yml no encontrado"
 
       - name: Deploy to production via SSH
         uses: appleboy/ssh-action@v1.0.3
