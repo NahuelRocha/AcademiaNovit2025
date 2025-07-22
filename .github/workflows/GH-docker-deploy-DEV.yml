@@ -47,25 +47,19 @@ jobs:
             mkdir -p ~/academianovit-prod
             echo "✅ Directorio creado/verificado"
 
-      - name: Copy nginx.conf to server
-        uses: garygrossgarten/github-action-scp@release
-        with:
-          local: nginx.conf
-          remote: academianovit-prod/nginx.conf
-          host: ${{ secrets.VM_HOST }}
-          username: ${{ secrets.VM_USER }}
-          privateKey: ${{ secrets.VM_PRIVATE_KEY }}
-          port: ${{ secrets.VM_PORT }}
+      - name: Copy files to server
+        run: |
+          # Crear archivo de clave privada temporal
+          echo "${{ secrets.VM_PRIVATE_KEY }}" > /tmp/private_key
+          chmod 600 /tmp/private_key
 
-      - name: Copy docker-swarm.yml to server
-        uses: garygrossgarten/github-action-scp@release
-        with:
-          local: docker-swarm.yml
-          remote: academianovit-prod/docker-swarm.yml
-          host: ${{ secrets.VM_HOST }}
-          username: ${{ secrets.VM_USER }}
-          privateKey: ${{ secrets.VM_PRIVATE_KEY }}
-          port: ${{ secrets.VM_PORT }}
+          # Copiar archivos usando SCP directamente
+          scp -i /tmp/private_key -P ${{ secrets.VM_PORT }} -o StrictHostKeyChecking=no \
+              nginx.conf docker-swarm.yml \
+              ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }}:~/academianovit-prod/
+
+          # Limpiar clave temporal
+          rm /tmp/private_key
 
       # Debug: Verificar archivos copiados
       - name: Debug - Verify copied files
@@ -133,7 +127,7 @@ jobs:
             export POSTGRES_DB=${{ secrets.POSTGRES_DB }}
             export POSTGRES_USER=${{ secrets.POSTGRES_USER }}
             export POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
-            export GITHUB_REPOSITORY=${{ github.repository }}
+            export GITHUB_REPOSITORY=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
 
             # Crear o reemplazar config para nginx
             echo "🔧 Configurando nginx..."
@@ -143,7 +137,9 @@ jobs:
 
             # Pull de la imagen antes del despliegue (preheat)
             echo "📥 Descargando imagen..."
-            docker pull ghcr.io/${{ github.repository }}:${{ env.DEPLOY_TAG }}
+            echo "Repository original: ${{ github.repository }}"
+            echo "Repository lowercase: ${GITHUB_REPOSITORY}"
+            docker pull ghcr.io/${GITHUB_REPOSITORY}:${{ env.DEPLOY_TAG }}
             echo "✅ Imagen descargada"
 
             # Despliegue del stack
