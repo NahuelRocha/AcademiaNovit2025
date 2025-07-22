@@ -98,130 +98,33 @@ jobs:
             echo "🌀 Iniciando despliegue Swarm en producción..."
 
             # Verificar que los archivos existen
-            echo "📁 Verificando archivos..."
-            ls -la
-
-            if [ ! -f nginx.conf ]; then
-              echo "❌ Error: nginx.conf no encontrado"
+            if [ ! -f nginx.conf ] || [ ! -f docker-swarm.yml ]; then
+              echo "❌ Error: archivos requeridos no encontrados"
               exit 1
             fi
-
-            if [ ! -f docker-swarm.yml ]; then
-              echo "❌ Error: docker-swarm.yml no encontrado"
-              exit 1
-            fi
-
-            echo "✅ Archivos encontrados correctamente"
 
             # Inicializar Docker Swarm si no está inicializado
-            echo "🔄 Verificando Docker Swarm..."
             if ! docker node ls >/dev/null 2>&1; then
-              echo "📡 Inicializando Docker Swarm..."
               docker swarm init --advertise-addr $(hostname -I | awk '{print $1}')
-              echo "✅ Docker Swarm inicializado"
-            else
-              echo "✅ Docker Swarm ya está activo"
             fi
 
-            # Exportar secretos como variables de entorno
+            # Exportar variables de entorno
             export POSTGRES_DB=${{ secrets.POSTGRES_DB }}
             export POSTGRES_USER=${{ secrets.POSTGRES_USER }}
             export POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
             export GITHUB_REPOSITORY=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
 
-            # Crear o reemplazar config para nginx
-            echo "🔧 Configurando nginx..."
-            docker config rm nginx_config 2>/dev/null || true
-            docker config create nginx_config nginx.conf
-            echo "✅ Nginx config creado"
-
-            # Pull de la imagen antes del despliegue (preheat)
-            echo "📥 Descargando imagen..."
-            echo "Repository original: ${{ github.repository }}"
-            echo "Repository lowercase: ${GITHUB_REPOSITORY}"
+            # Pull de la imagen
             docker pull ghcr.io/${GITHUB_REPOSITORY}:${{ env.DEPLOY_TAG }}
-            echo "✅ Imagen descargada"
 
-            # Verificar si el stack existe
-            STACK_EXISTS=$(docker stack ls --format "table {{.Name}}" | grep -c "^academianovit$" || true)
+            # Desplegar stack
+            docker stack deploy -c docker-swarm.yml academianovit
 
-            if [ "$STACK_EXISTS" -gt 0 ]; then
-                echo "🔄 Stack existente encontrado, realizando actualización gradual..."
-                
-                # Primero actualizar solo postgres si es necesario
-                echo "📊 Verificando estado de postgres..."
-                POSTGRES_RUNNING=$(docker service ps academianovit_postgres --filter "desired-state=running" --format "table {{.CurrentState}}" | grep -c "Running" || true)
-                
-                if [ "$POSTGRES_RUNNING" -eq 0 ]; then
-                    echo "🗄️ Iniciando postgres primero..."
-                    docker stack deploy -c docker-swarm.yml academianovit
-                    
-                    echo "⏳ Esperando a que postgres esté listo..."
-                    timeout 120 bash -c '
-                    while true; do
-                        if docker service logs academianovit_postgres 2>/dev/null | grep -q "database system is ready to accept connections"; then
-                            echo "✅ Postgres está listo"
-                            break
-                        fi
-                        echo "⏳ Esperando postgres..."
-                        sleep 5
-                    done'
-                fi
-                
-                # Actualizar servicios de API gradualmente
-                echo "🚀 Desplegando/actualizando servicios de API..."
-                docker stack deploy -c docker-swarm.yml academianovit
-                
-                echo "⏳ Esperando a que al menos una réplica de API esté lista..."
-                timeout 180 bash -c '
-                while true; do
-                    API_RUNNING=$(docker service ls --filter "name=academianovit_api" --format "table {{.Replicas}}" | tail -n +2 | grep -o "^[0-9]*" || echo "0")
-                    if [ "$API_RUNNING" -gt 0 ]; then
-                        echo "✅ Al menos una réplica de API está corriendo ($API_RUNNING)"
-                        break
-                    fi
-                    echo "⏳ Esperando réplicas de API... ($API_RUNNING/5)"
-                    sleep 10
-                done'
-                
-                # Finalmente desplegar nginx
-                echo "🌐 Desplegando nginx..."
-                docker stack deploy -c docker-swarm.yml academianovit
-                
-            else
-                echo "🆕 Nuevo stack, desplegando desde cero..."
-                
-                # Deploy inicial - postgres primero
-                echo "🗄️ Desplegando postgres..."
-                docker stack deploy -c docker-swarm.yml academianovit
-                
-                echo "⏳ Esperando a que postgres esté completamente listo..."
-                timeout 120 bash -c '
-                while true; do
-                    if docker service logs academianovit_postgres 2>/dev/null | grep -q "database system is ready to accept connections"; then
-                        echo "✅ Postgres está listo"
-                        break
-                    fi
-                    echo "⏳ Esperando postgres..."
-                    sleep 5
-                done'
-                
-                # Pequeña pausa adicional para asegurar que postgres esté 100% listo
-                echo "⏳ Pausa adicional para estabilización de postgres..."
-                sleep 10
-                
-                # Deploy completo
-                echo "🚀 Desplegando stack completo..."
-                docker stack deploy -c docker-swarm.yml academianovit
-            fi
-
-            # Monitoreo del despliegue
-            echo "📊 Monitoreando despliegue..."
-            for i in {1..18}; do  # 3 minutos máximo
-                echo "📊 Estado del stack (intento $i/18):"
+            # Monitorear despliegue
+            for i in {1..12}; do
+                echo "📊 Estado del stack (intento $i/12):"
                 docker stack services academianovit
                 
-                # Verificar si todo está corriendo
                 API_READY=$(docker service ls --filter "name=academianovit_api" --format "table {{.Replicas}}" | tail -n +2 | grep -o "^[0-9]*" || echo "0")
                 NGINX_READY=$(docker service ls --filter "name=academianovit_nginx" --format "table {{.Replicas}}" | tail -n +2 | grep -o "^[0-9]*" || echo "0")
                 POSTGRES_READY=$(docker service ls --filter "name=academianovit_postgres" --format "table {{.Replicas}}" | tail -n +2 | grep -o "^[0-9]*" || echo "0")
@@ -229,32 +132,12 @@ jobs:
                 echo "Estado: API=$API_READY/5, Nginx=$NGINX_READY/1, Postgres=$POSTGRES_READY/1"
                 
                 if [ "$API_READY" -gt 0 ] && [ "$NGINX_READY" -eq 1 ] && [ "$POSTGRES_READY" -eq 1 ]; then
-                    echo "✅ Servicios básicos están corriendo!"
+                    echo "✅ Servicios corriendo correctamente"
                     break
                 fi
                 
-                if [ $i -eq 18 ]; then
-                    echo "⚠️ Tiempo máximo alcanzado. Verificando logs de errores..."
-                    echo "🔍 Logs de API:"
-                    docker service logs --tail 10 academianovit_api
-                    echo "🔍 Logs de Nginx:"
-                    docker service logs --tail 5 academianovit_nginx
-                fi
-                
-                sleep 10
+                sleep 15
             done
-
-            echo "📊 Estado final del stack:"
-            docker stack services academianovit
-
-            # Verificación de salud básica
-            echo "🔍 Verificación de salud básica..."
-            sleep 5
-            if curl -f http://localhost/nginx-health >/dev/null 2>&1; then
-                echo "✅ Nginx responde correctamente"
-            else
-                echo "⚠️ Nginx no responde en el health check local"
-            fi
 
             echo "✅ Despliegue completado."
 

@@ -96,4 +96,4 @@ networks:
 
 configs:
   nginx_config:
-    external: true
+    file: ./nginx.conf
