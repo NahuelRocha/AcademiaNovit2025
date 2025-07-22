@@ -23,8 +23,20 @@ jobs:
         uses: docker/login-action@v2
         with:
           registry: ghcr.io
-          username: ${{ github.actor }} # Usa tu nombre de usuario automáticamente
-          password: ${{ secrets.GITHUB_TOKEN }} # Token automático de GitHub Actions
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Copiar nginx.conf y docker-swarm.yml vía SCP
+        uses: appleboy/scp-action@v0.1.5
+        with:
+          host: ${{ secrets.VM_HOST }}
+          port: ${{ secrets.VM_PORT }}
+          username: ${{ secrets.VM_USER }}
+          key: ${{ secrets.VM_PRIVATE_KEY }}
+          source: |
+            nginx.conf
+            docker-swarm.yml
+          target: ~/academianovit-prod/
 
       - name: Deploy to production via SSH
         uses: appleboy/ssh-action@v1.0.3
@@ -36,115 +48,24 @@ jobs:
           script: |
             set -e
 
-            export REGISTRY=${{ env.REGISTRY }}
-            export IMAGE_NAME=${{ env.IMAGE_NAME }}
-            export DEPLOY_TAG=${{ env.DEPLOY_TAG }}
+            cd ~/academianovit-prod
 
             echo "🌀 Iniciando despliegue Swarm en producción..."
 
-            # Crear carpeta de despliegue si no existe
-            mkdir -p ~/academianovit-prod
-            cd ~/academianovit-prod
+            # Exportar secretos como variables de entorno
+            export POSTGRES_DB=${{ secrets.POSTGRES_DB }}
+            export POSTGRES_USER=${{ secrets.POSTGRES_USER }}
+            export POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
+            export GITHUB_REPOSITORY=${{ github.repository }}
 
-            # Transferir el archivo nginx.conf del repo al servidor
-            scp nginx.conf ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }}:~/academianovit-prod/nginx.conf
-
-            # Crear configuración en Docker Swarm
+            # Crear o reemplazar config para nginx
             docker config rm nginx_config || true
-            docker config create nginx_config ~/academianovit-prod/nginx.conf
+            docker config create nginx_config nginx.conf
 
-            # Guardar docker-swarm.yml en la VM
-            cat > docker-swarm.yml <<EOF
-            version: '3.8'
+            # Pull de la imagen antes del despliegue (preheat)
+            docker pull ghcr.io/${{ github.repository }}:${{ env.DEPLOY_TAG }}
 
-            services:
-              postgres:
-                image: postgres:16.6-alpine
-                environment:
-                  POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
-                  POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
-                  POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
-                  POSTGRES_INITDB_ARGS: "--encoding=UTF-8"
-                volumes:
-                  - postgres_data:/var/lib/postgresql/data
-                networks:
-                  - app_network
-                deploy:
-                  replicas: 1
-                  placement:
-                    constraints: [node.role == manager]
-                  restart_policy:
-                    condition: on-failure
-                  resources:
-                    limits:
-                      memory: 512M
-                healthcheck:
-                  test: ["CMD-SHELL", "pg_isready -U ${{ secrets.POSTGRES_USER }} -d ${{ secrets.POSTGRES_DB }}"]
-                  interval: 10s
-                  timeout: 5s
-                  retries: 5
-
-              api:
-                image: $REGISTRY/$IMAGE_NAME:$DEPLOY_TAG
-                environment:
-                  - ASPNETCORE_ENVIRONMENT=Production
-                  - ASPNETCORE_URLS=http://+:8080
-                  - ConnectionStrings__DefaultConnection=Host=postgres;Port=5432;Database=${{ secrets.POSTGRES_DB }};Username=${{ secrets.POSTGRES_USER }};Password=${{ secrets.POSTGRES_PASSWORD }}
-                networks:
-                  - app_network
-                deploy:
-                  replicas: 5
-                  update_config:
-                    parallelism: 2
-                    delay: 10s
-                    order: start-first
-                  restart_policy:
-                    condition: on-failure
-                  resources:
-                    limits:
-                      memory: 256M
-                healthcheck:
-                  test: ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"]
-                  interval: 30s
-                  timeout: 10s
-                  retries: 3
-
-              nginx:
-                image: nginx:1.25.5-alpine
-                ports:
-                  - "80:80"
-                  - "8080:8080"
-                networks:
-                  - app_network
-                configs:
-                  - source: nginx_config
-                    target: /etc/nginx/nginx.conf
-                deploy:
-                  replicas: 1
-                  placement:
-                    constraints: [node.role == manager]
-                  restart_policy:
-                    condition: on-failure
-                depends_on:
-                  - api
-
-            volumes:
-              postgres_data:
-
-            networks:
-              app_network:
-                driver: overlay
-                attachable: true
-
-            configs:
-              nginx_config:
-                external: true
-            EOF
-
-            # Pull de imagenes (precalentamiento)
-            docker pull $REGISTRY/$IMAGE_NAME:$DEPLOY_TAG
-
-            # Deploy del stack
+            # Despliegue del stack
             docker stack deploy -c docker-swarm.yml academianovit
 
             echo "✅ Despliegue completado."
@@ -161,7 +82,7 @@ jobs:
           body: |
             Se ha realizado el deploy a producción.
 
-            Imagen: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.DEPLOY_TAG }}
+            Imagen: ghcr.io/${{ github.repository }}:${{ env.DEPLOY_TAG }}
             Resultado: ${{ job.status }}
             Ver logs: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           to: ${{ secrets.EMAIL_TO }}
