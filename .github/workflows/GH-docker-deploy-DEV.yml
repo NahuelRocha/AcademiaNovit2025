@@ -121,8 +121,8 @@ jobs:
             docker stack deploy -c docker-swarm.yml academianovit
 
             # Monitorear despliegue
-            for i in {1..12}; do
-                echo "📊 Estado del stack (intento $i/12):"
+            for i in {1..5}; do
+                echo "📊 Estado del stack (intento $i/5):"
                 docker stack services academianovit
                 
                 API_READY=$(docker service ls --filter "name=academianovit_api" --format "table {{.Replicas}}" | tail -n +2 | grep -o "^[0-9]*" || echo "0")
