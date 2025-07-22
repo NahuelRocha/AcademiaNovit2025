@@ -26,18 +26,25 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Copiar nginx.conf y docker-swarm.yml vía SCP
-        uses: appleboy/scp-action@v0.1.5
+      - name: Copy files to server
+        uses: garygrossgarten/github-action-scp@release
         with:
+          local: nginx.conf
+          remote: ~/academianovit-prod/nginx.conf
           host: ${{ secrets.VM_HOST }}
-          port: ${{ secrets.VM_PORT }}
           username: ${{ secrets.VM_USER }}
-          key: ${{ secrets.VM_PRIVATE_KEY }}
-          source: |
-            ./nginx.conf
-            ./docker-swarm.yml
-          target: ~/academianovit-prod/
-          debug: true
+          privateKey: ${{ secrets.VM_PRIVATE_KEY }}
+          port: ${{ secrets.VM_PORT }}
+
+      - name: Copy docker-swarm.yml to server
+        uses: garygrossgarten/github-action-scp@release
+        with:
+          local: docker-swarm.yml
+          remote: ~/academianovit-prod/docker-swarm.yml
+          host: ${{ secrets.VM_HOST }}
+          username: ${{ secrets.VM_USER }}
+          privateKey: ${{ secrets.VM_PRIVATE_KEY }}
+          port: ${{ secrets.VM_PORT }}
 
       - name: Deploy to production via SSH
         uses: appleboy/ssh-action@v1.0.3
