@@ -39,6 +39,13 @@ jobs:
             mkdir -p ~/academianovit-prod
             cd ~/academianovit-prod
 
+            # Transferir el archivo nginx.conf del repo al servidor
+            scp nginx.conf ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }}:~/academianovit-prod/nginx.conf
+
+            # Crear configuración en Docker Swarm
+            docker config rm nginx_config || true
+            docker config create nginx_config ~/academianovit-prod/nginx.conf
+
             # Guardar docker-swarm.yml en la VM
             cat > docker-swarm.yml <<EOF
             version: '3.8'
