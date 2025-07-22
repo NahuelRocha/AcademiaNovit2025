@@ -34,9 +34,10 @@ jobs:
           username: ${{ secrets.VM_USER }}
           key: ${{ secrets.VM_PRIVATE_KEY }}
           source: |
-            nginx.conf
-            docker-swarm.yml
+            ./nginx.conf
+            ./docker-swarm.yml
           target: ~/academianovit-prod/
+          debug: true
 
       - name: Deploy to production via SSH
         uses: appleboy/ssh-action@v1.0.3
