@@ -60,6 +60,32 @@ jobs:
 
             echo "🌀 Iniciando despliegue Swarm en producción..."
 
+            # Verificar que los archivos existen
+            echo "📁 Verificando archivos..."
+            ls -la
+
+            if [ ! -f nginx.conf ]; then
+              echo "❌ Error: nginx.conf no encontrado"
+              exit 1
+            fi
+
+            if [ ! -f docker-swarm.yml ]; then
+              echo "❌ Error: docker-swarm.yml no encontrado"
+              exit 1
+            fi
+
+            echo "✅ Archivos encontrados correctamente"
+
+            # Inicializar Docker Swarm si no está inicializado
+            echo "🔄 Verificando Docker Swarm..."
+            if ! docker node ls >/dev/null 2>&1; then
+              echo "📡 Inicializando Docker Swarm..."
+              docker swarm init --advertise-addr $(hostname -I | awk '{print $1}')
+              echo "✅ Docker Swarm inicializado"
+            else
+              echo "✅ Docker Swarm ya está activo"
+            fi
+
             # Exportar secretos como variables de entorno
             export POSTGRES_DB=${{ secrets.POSTGRES_DB }}
             export POSTGRES_USER=${{ secrets.POSTGRES_USER }}
@@ -67,14 +93,24 @@ jobs:
             export GITHUB_REPOSITORY=${{ github.repository }}
 
             # Crear o reemplazar config para nginx
-            docker config rm nginx_config || true
+            echo "🔧 Configurando nginx..."
+            docker config rm nginx_config 2>/dev/null || true
             docker config create nginx_config nginx.conf
+            echo "✅ Nginx config creado"
 
             # Pull de la imagen antes del despliegue (preheat)
+            echo "📥 Descargando imagen..."
             docker pull ghcr.io/${{ github.repository }}:${{ env.DEPLOY_TAG }}
+            echo "✅ Imagen descargada"
 
             # Despliegue del stack
+            echo "🚀 Desplegando stack..."
             docker stack deploy -c docker-swarm.yml academianovit
+
+            # Esperar un momento y verificar el estado
+            sleep 5
+            echo "📊 Estado del stack:"
+            docker stack services academianovit
 
             echo "✅ Despliegue completado."
 
