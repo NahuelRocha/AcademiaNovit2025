@@ -36,9 +36,13 @@ services:
     environment:
       - ASPNETCORE_ENVIRONMENT=Production
       - ASPNETCORE_URLS=http://+:8080
+      # CORREGIDO: usar 'postgres' en lugar de 'academianovit_postgres'
       - ConnectionStrings__DefaultConnection=Host=postgres;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
     networks:
       - app_network
+    # AGREGADO: dependencia explícita
+    depends_on:
+      - postgres
     deploy:
       replicas: 5
       update_config:
@@ -56,6 +60,13 @@ services:
           memory: 512M
         reservations:
           memory: 128M
+    # AGREGADO: healthcheck para la API
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
   nginx:
     image: nginx:1.25.5-alpine
@@ -67,6 +78,9 @@ services:
     configs:
       - source: nginx_config
         target: /etc/nginx/nginx.conf
+    # AGREGADO: dependencia de la API
+    depends_on:
+      - api
     deploy:
       replicas: 1
       placement:
