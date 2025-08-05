@@ -141,6 +141,8 @@ services:
         target: /etc/prometheus/prometheus.yml
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--web.external-url=/prometheus/"
+      - "--web.route-prefix=/"
       - "--storage.tsdb.path=/prometheus"
       - "--web.console.libraries=/etc/prometheus/console_libraries"
       - "--web.console.templates=/etc/prometheus/consoles"
@@ -157,25 +159,27 @@ services:
           memory: 256M
 
   grafana:
-    image: grafana/grafana:11.2.0
-    ports:
-      - "3000:3000"
-    environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin123
-      - GF_USERS_ALLOW_SIGN_UP=false
-    volumes:
-      - grafana_data:/var/lib/grafana
-    networks:
-      - app_network
-    deploy:
-      replicas: 1
-      placement:
-        constraints: [node.role == manager]
-      resources:
-        limits:
-          memory: 256M
-        reservations:
-          memory: 128M
+  image: grafana/grafana:11.2.0
+  ports:
+    - "3000:3000"
+  environment:
+    - GF_SERVER_ROOT_URL=%(protocol)s://%(domain)s:%(http_port)s/grafana/
+    - GF_SERVER_SERVE_FROM_SUB_PATH=true
+    - GF_SECURITY_ADMIN_PASSWORD=admin123
+    - GF_USERS_ALLOW_SIGN_UP=false
+  volumes:
+    - grafana_data:/var/lib/grafana
+  networks:
+    - app_network
+  deploy:
+    replicas: 1
+    placement:
+      constraints: [node.role == manager]
+    resources:
+      limits:
+        memory: 256M
+      reservations:
+        memory: 128M
 
 volumes:
   postgres_data:
