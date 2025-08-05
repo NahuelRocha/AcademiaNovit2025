@@ -55,7 +55,7 @@ jobs:
 
           # Copiar archivos usando SCP directamente
           scp -i /tmp/private_key -P ${{ secrets.VM_PORT }} -o StrictHostKeyChecking=no \
-              nginx.conf docker-swarm.yml \
+              nginx.conf docker-swarm.yml prometheus.yml \
               ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }}:~/academianovit-prod/
 
           # Limpiar clave temporal
