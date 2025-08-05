@@ -152,8 +152,12 @@ services:
   grafana:
     image: grafana/grafana:11.2.0
     environment:
-      - GF_SERVER_ROOT_URL=%(protocol)s://%(domain)s:%(http_port)s/grafana
+      # 1) Usa HTTP_HOST (sin puerto) para que Grafana genere URLs basadas en el Host que recibe
+      - GF_SERVER_ROOT_URL=%(protocol)s://%(http_host)s/grafana
       - GF_SERVER_SERVE_FROM_SUB_PATH=true
+      # 2) Asegúrate de que Grafana respete cabeceras proxy
+      - GF_SERVER_PROXY_PROTOCOL_HEADER=X-Forwarded-Proto
+      - GF_SERVER_PROXY_HOST_HEADER=X-Forwarded-Host
       - GF_SECURITY_ADMIN_PASSWORD=admin123
       - GF_USERS_ALLOW_SIGN_UP=false
     networks:
