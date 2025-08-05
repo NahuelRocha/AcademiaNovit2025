@@ -1,5 +1,6 @@
 version: "3.8"
 services:
+  # Base de datos PostgreSQL
   postgres:
     image: postgres:16.6-alpine
     environment:
@@ -10,7 +11,9 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
-      - app_network
+      app_network:
+        aliases:
+          - postgres
     deploy:
       replicas: 1
       placement:
@@ -31,6 +34,7 @@ services:
       retries: 5
       start_period: 30s
 
+  # API .NET
   api:
     image: ghcr.io/${GITHUB_REPOSITORY}:production
     environment:
@@ -38,7 +42,9 @@ services:
       - ASPNETCORE_URLS=http://+:8080
       - ConnectionStrings__DefaultConnection=Host=postgres;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
     networks:
-      - app_network
+      app_network:
+        aliases:
+          - api
     deploy:
       replicas: 5
       update_config:
@@ -63,10 +69,11 @@ services:
       retries: 3
       start_period: 90s
 
+  # Nginx como gateway único
   nginx:
     image: nginx:1.25.5-alpine
     ports:
-      - "80:80" # <-- ÚNICAMENTE HTTP
+      - "80:80"
     networks:
       - app_network
     configs:
@@ -94,6 +101,7 @@ services:
       retries: 3
       start_period: 60s
 
+  # Métricas del sistema host (Node Exporter)
   node-exporter:
     image: prom/node-exporter:v1.8.2
     command:
@@ -113,6 +121,7 @@ services:
         reservations:
           memory: 64M
 
+  # Métricas de contenedores (cAdvisor)
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:v0.49.1
     volumes:
@@ -131,6 +140,7 @@ services:
         reservations:
           memory: 128M
 
+  # Prometheus para recolección de métricas
   prometheus:
     image: prom/prometheus:v2.54.1
     configs:
@@ -143,37 +153,35 @@ services:
       - "--web.route-prefix=/prometheus"
       - "--web.enable-lifecycle"
     networks:
-      - app_network
+      app_network:
+        aliases:
+          - prometheus
     deploy:
       replicas: 1
       placement:
         constraints: [node.role == manager]
 
+  # Grafana para visualización de dashboards
   grafana:
     image: grafana/grafana:11.2.0
     environment:
-      # 1) Usa HTTP_HOST (sin puerto) para que Grafana genere URLs basadas en el Host que recibe
-      - GF_SERVER_ROOT_URL=%(protocol)s://%(http_host)s/grafana
+      - GF_SERVER_ROOT_URL=/grafana
       - GF_SERVER_SERVE_FROM_SUB_PATH=true
-      # 2) Asegúrate de que Grafana respete cabeceras proxy
-      - GF_SERVER_PROXY_PROTOCOL_HEADER=X-Forwarded-Proto
-      - GF_SERVER_PROXY_HOST_HEADER=X-Forwarded-Host
       - GF_SECURITY_ADMIN_PASSWORD=admin123
       - GF_USERS_ALLOW_SIGN_UP=false
     networks:
-      - app_network
+      app_network:
+        aliases:
+          - grafana
     deploy:
       replicas: 1
       placement:
         constraints: [node.role == manager]
 
 volumes:
-  postgres_data:
-    driver: local
-  prometheus_data:
-    driver: local
-  grafana_data:
-    driver: local
+  postgres_data: {}
+  prometheus_data: {}
+  grafana_data: {}
 
 networks:
   app_network:
