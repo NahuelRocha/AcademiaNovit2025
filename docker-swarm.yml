@@ -84,6 +84,17 @@ services:
       resources:
         limits:
           memory: 128M
+    # Dependencias implícitas a través de healthchecks
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "nginx -t && curl -f http://localhost/nginx-health || exit 1",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
   # === SERVICIOS DE MONITOREO ===
 
@@ -110,6 +121,7 @@ services:
   # cAdvisor - métricas de contenedores
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:v0.49.1
+    # Removemos el puerto expuesto ya que accederemos via nginx
     volumes:
       - /:/rootfs:ro
       - /var/run:/var/run:ro
@@ -128,6 +140,7 @@ services:
 
   prometheus:
     image: prom/prometheus:v2.54.1
+    # Removemos el puerto expuesto ya que accederemos via nginx
     volumes:
       - prometheus_data:/prometheus
     networks:
@@ -157,6 +170,7 @@ services:
 
   grafana:
     image: grafana/grafana:11.2.0
+    # Removemos el puerto expuesto ya que accederemos via nginx
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=admin123
       - GF_USERS_ALLOW_SIGN_UP=false
