@@ -7,24 +7,37 @@ rule_files:
   # - "second_rules.yml"
 
 scrape_configs:
-  # Prometheus self-monitoring
+  # Prometheus se monitorea a sí mismo
   - job_name: "prometheus"
     static_configs:
       - targets: ["localhost:9090"]
 
-  # Node Exporter para métricas del sistema host
+  # Node Exporter - métricas del sistema host
   - job_name: "node-exporter"
     static_configs:
       - targets: ["node-exporter:9100"]
+    scrape_interval: 30s
+    metrics_path: /metrics
 
-  # cAdvisor para métricas de contenedores
+  # cAdvisor - métricas de contenedores Docker
   - job_name: "cadvisor"
     static_configs:
       - targets: ["cadvisor:8080"]
-
-  # Tu aplicación API (5 réplicas)
-  - job_name: "academia-api"
-    static_configs:
-      - targets: ["academianovit_api:8080"]
-    metrics_path: "/health"
     scrape_interval: 30s
+    metrics_path: /metrics
+
+  # API aplicación - si expone métricas
+  - job_name: "api-health"
+    static_configs:
+      - targets: ["api:8080"]
+    scrape_interval: 30s
+    metrics_path: /health
+    scrape_timeout: 10s
+
+  # Nginx - si se configura métricas (opcional)
+  - job_name: "nginx"
+    static_configs:
+      - targets: ["nginx:80"]
+    scrape_interval: 30s
+    metrics_path: /nginx-health
+    scrape_timeout: 10s

@@ -110,8 +110,6 @@ services:
   # cAdvisor - métricas de contenedores
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:v0.49.1
-    ports:
-      - "8081:8080"
     volumes:
       - /:/rootfs:ro
       - /var/run:/var/run:ro
@@ -130,8 +128,6 @@ services:
 
   prometheus:
     image: prom/prometheus:v2.54.1
-    ports:
-      - "9090:9090"
     volumes:
       - prometheus_data:/prometheus
     networks:
@@ -141,13 +137,14 @@ services:
         target: /etc/prometheus/prometheus.yml
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
-      - "--web.external-url=/prometheus/"
-      - "--web.route-prefix=/"
       - "--storage.tsdb.path=/prometheus"
       - "--web.console.libraries=/etc/prometheus/console_libraries"
       - "--web.console.templates=/etc/prometheus/consoles"
       - "--storage.tsdb.retention.time=200h"
       - "--web.enable-lifecycle"
+      # CRÍTICO: Configurar el external URL y route prefix para subpath
+      - "--web.external-url=/prometheus/"
+      - "--web.route-prefix=/prometheus/"
     deploy:
       replicas: 1
       placement:
@@ -159,25 +156,26 @@ services:
           memory: 256M
 
   grafana:
-  image: grafana/grafana:11.2.0
-  ports:
-    - "3000:3000"
-  environment:
-    - GF_SECURITY_ADMIN_PASSWORD=admin123
-    - GF_USERS_ALLOW_SIGN_UP=false
-  volumes:
-    - grafana_data:/var/lib/grafana
-  networks:
-    - app_network
-  deploy:
-    replicas: 1
-    placement:
-      constraints: [node.role == manager]
-    resources:
-      limits:
-        memory: 256M
-      reservations:
-        memory: 128M
+    image: grafana/grafana:11.2.0
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin123
+      - GF_USERS_ALLOW_SIGN_UP=false
+      # CRÍTICO: Configuración para subpath
+      - GF_SERVER_ROOT_URL=http://localhost/grafana/
+      - GF_SERVER_SERVE_FROM_SUB_PATH=true
+    volumes:
+      - grafana_data:/var/lib/grafana
+    networks:
+      - app_network
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 128M
 
 volumes:
   postgres_data:
