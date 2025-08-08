@@ -168,10 +168,19 @@ services:
   grafana:
     image: grafana/grafana:11.2.0
     environment:
-      - GF_SERVER_ROOT_URL=/grafana
+      # Configuración completa para subpath con HTTPS
+      - GF_SERVER_ROOT_URL=https://f36c3bb78b17.ngrok-free.app/grafana
       - GF_SERVER_SERVE_FROM_SUB_PATH=true
       - GF_SECURITY_ADMIN_PASSWORD=admin123
       - GF_USERS_ALLOW_SIGN_UP=false
+      # Configuración adicional para HTTPS
+      - GF_SERVER_PROTOCOL=http
+      - GF_SERVER_HTTP_PORT=3000
+      # Configuración para cookies seguras
+      - GF_SECURITY_COOKIE_SECURE=false
+      - GF_SECURITY_COOKIE_SAMESITE=lax
+    volumes:
+      - grafana_data:/var/lib/grafana
     networks:
       app_network:
         aliases:
