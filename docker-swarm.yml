@@ -168,7 +168,7 @@ services:
   grafana:
     image: grafana/grafana:11.2.0
     environment:
-      - GF_SERVER_ROOT_URL=/grafana
+      - GF_SERVER_ROOT_URL=https://f36c3bb78b17.ngrok-free.app/grafana
       - GF_SERVER_SERVE_FROM_SUB_PATH=true
       - GF_SECURITY_ADMIN_PASSWORD=admin123
       - GF_USERS_ALLOW_SIGN_UP=false
